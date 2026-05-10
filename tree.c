@@ -1,6 +1,6 @@
 /**
  * 实验：目录树查看器（仿 Linux tree 命令）
- * 学号：__________  姓名：__________
+ * 学号：2504020428  姓名：熊祎庆
  * 说明：请补全所有标记为 TODO 的函数体，不要修改其他代码。
  * 目录树查看器（仿 Linux tree 命令）
  * 完整实现版本（C语言，左孩子右兄弟二叉树）
@@ -40,12 +40,23 @@ char* getBaseName(void);
 // 创建新结点（分配内存、复制字符串、初始化指针）
 FileNode* createNode(const char *name, int isDir) {
     // TODO: 实现
+  FileNode *newNode = (FileNode *)malloc(sizeof(FileNode));
+    newNode->name = (char *)malloc(strlen(name) + 1);
+    strcpy(newNode->name, name);
+    newNode->isDir = isDir;
+    newNode->firstChild = NULL;
+    newNode->nextSibling = NULL;
+    return newNode;
+
     return NULL;
 }
 
 // 比较函数，用于 qsort 对子项按名称排序
 int cmpNode(const void *a, const void *b) {
     // TODO: 实现
+     FileNode *na = *(FileNode**)a;
+    FileNode *nb = *(FileNode**)b;
+    return strcmp(na->name, nb->name);
     return 0;
 }
 
@@ -64,6 +75,54 @@ FileNode* buildTree(const char *path) {
     // 9. 对子结点数组排序（调用 qsort 和 cmpNode）
     // 10. 将排序后的子结点链接成兄弟链表（firstChild 指向第一个，后续 nextSibling）
     // 11. 释放临时数组，返回当前目录结点
+   DIR *dir = opendir(path);
+    if(dir == NULL)
+        return NULL;
+
+    char nameBuf[256];
+    char *lastPos = strrchr(path, '/');
+    if(lastPos == NULL)
+        strcpy(nameBuf, path);
+    else
+        strcpy(nameBuf, lastPos + 1);
+
+    FileNode *nowNode = createNode(nameBuf, 1);
+    FileNode *tempArr[1024];
+    int num = 0;
+
+    struct dirent *entry;
+    while((entry = readdir(dir)) != NULL)
+    {
+        if(strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0)
+            continue;
+
+        char fullPath[1024];
+        snprintf(fullPath, sizeof(fullPath), "%s/%s", path, entry->d_name);
+        struct stat st;
+        stat(fullPath, &st);
+
+        if(S_ISDIR(st.st_mode))
+        {
+            tempArr[num++] = buildTree(fullPath);
+        }
+        else
+        {
+            tempArr[num++] = createNode(entry->d_name, 0);
+        }
+    }
+    closedir(dir);
+
+    qsort(tempArr, num, sizeof(FileNode*), cmpNode);
+
+    if(num > 0)
+    {
+        nowNode->firstChild = tempArr[0];
+        for(int i = 0; i < num - 1; i++)
+        {
+            tempArr[i]->nextSibling = tempArr[i + 1];
+        }
+    }
+    return nowNode;
     return NULL;
 }
 
@@ -80,34 +139,89 @@ void printTree(FileNode *node, const char *prefix, int isLast) {
     //     计算新前缀 = prefix + (isLast ? "    " : "|   ")
     //     判断是否为最后一个孩子
     //     递归调用 printTree
+  if(node == NULL)
+        return;
+
+    printf("%s%s%s", prefix, isLast ? "`-- " : "|-- ", node->name);
+    if(node->isDir)
+        printf("/");
+    printf("\n");
+
+    char newPrefix[1024];
+    snprintf(newPrefix, sizeof(newPrefix), "%s%s", prefix, isLast ? "    " : "|   ");
+
+    FileNode *p = node->firstChild;
+    int count = 0;
+    FileNode *t = p;
+    while(t != NULL)
+    {
+        count++;
+        t = t->nextSibling;
+    }
+
+    int idx = 0;
+    while(p != NULL)
+    {
+        idx++;
+        printTree(p, newPrefix, idx == count);
+        p = p->nextSibling;
+    }
 }
 
 // 统计二叉树结点总数
 int countNodes(FileNode *root) {
     // TODO: 实现（递归）
+    if(root == NULL)
+        return 0;
+    return 1 + countNodes(root->firstChild) + countNodes(root->nextSibling);
     return 0;
 }
 
 // 统计叶子结点数（firstChild == NULL 的结点）
 int countLeaves(FileNode *root) {
     // TODO: 实现（递归）
+     if(root == NULL)
+        return 0;
+      if (root->firstChild == NULL) {
+        return 1 + countLeaves(root->nextSibling);
+    } else {
+        return countLeaves(root->firstChild) + countLeaves(root->nextSibling);
+    }
     return 0;
 }
 
 // 计算二叉树高度（根深度为1，空树高度为0）
 int treeHeight(FileNode *root) {
     // TODO: 实现（递归）
+    if (root == NULL) return 0;
+
+    int childHeight = treeHeight(root->firstChild);
+    return childHeight + 1;
     return 0;
 }
 
 // 统计目录数和文件数（遍历整棵树）
 void countDirFile(FileNode *root, int *dirs, int *files) {
     // TODO: 实现（递归）
+      if (root == NULL) return;
+    if (root->isDir) {
+       (*dirs)++;// 根目录不计入
+    } else {
+        (*files)++;
+    }
+     countDirFile(root->firstChild, dirs, files);
+    countDirFile(root->nextSibling, dirs, files);
 }
 
 // 释放整棵树的内存
 void freeTree(FileNode *root) {
     // TODO: 实现（递归释放左右子树，最后释放当前结点）
+      if(root == NULL)
+        return;
+    freeTree(root->firstChild);
+    freeTree(root->nextSibling);
+    free(root->name);
+    free(root);
 }
 
 // 获取当前工作目录的“基本名称”（用于显示根结点名）
@@ -115,6 +229,21 @@ char* getBaseName(void) {
     // TODO: 实现
     // 提示：调用 getcwd(NULL,0) 获取绝对路径，提取最后一个 '/' 之后的部分
     // 注意释放 getcwd 分配的内存
+       char *path = getcwd(NULL, 0);
+    char *p = strrchr(path, '/');
+    char *res;
+    if(p == NULL)
+    {
+        res = (char*)malloc(strlen(path) + 1);
+        strcpy(res, path);
+    }
+    else
+    {
+        res = (char*)malloc(strlen(p + 1) + 1);
+        strcpy(res, p + 1);
+    }
+    free(path);
+    return res;
     return NULL;
 }
 
